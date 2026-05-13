@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model KbEntry {
+  id         String   @id @default(cuid())
+  title      String
+  content    String
+  tags       String
+  embedding  Unsupported("vector(256)")?
+  source     String   @default("manual")
+  ticket_id  String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  messages      Message[]
+  searchResults SearchResult[]
+  tickets       Ticket[]
+}
+
+model Message {
+  id               String   @id @default(cuid())
+  session_id       String
+  role             String
+  content          String
+  source           String?
+  confidence_score Float?
+  kb_entry_id      String?
+  search_result_id String?
+  created_at       DateTime @default(now())
+
+  kb_entry      KbEntry?      @relation(fields: [kb_entry_id], references: [id])
+  search_result SearchResult? @relation(fields: [search_result_id], references: [id])
+}
+
+model SearchResult {
+  id               String   @id @default(cuid())
+  session_id       String
+  query            String
+  search_type      String
+  results_json     String
+  confidence_score Float
+  top_entry_id     String?
+  web_source_url   String?
+  used             Boolean  @default(false)
+  created_at       DateTime @default(now())
+
+  top_entry KbEntry? @relation(fields: [top_entry_id], references: [id])
+  messages  Message[]
+}
+
+model Ticket {
+  id                String   @id @default(cuid())
+  session_id        String
+  query_summary     String
+  conversation_json String
+  status            String   @default("open")
+  resolution_notes  String?
+  resolution_summary String?
+  added_to_kb       Boolean  @default(false)
+  kb_entry_id       String?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  kb_entry KbEntry? @relation(fields: [kb_entry_id], references: [id])
+}
