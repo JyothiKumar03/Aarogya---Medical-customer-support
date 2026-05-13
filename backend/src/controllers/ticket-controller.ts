@@ -1,22 +1,20 @@
 import type { Request, Response } from "express"
 import { create_ticket, list_tickets, get_ticket, resolve_ticket } from "../services/ticket-service"
+import type { TCreateTicketBody } from "../types/ticket-types"
 import { create_logger } from "../services/logger-service"
 
 const log = create_logger("ticket-controller")
 
 export async function handle_create_ticket(req: Request, res: Response): Promise<void> {
   try {
-    const { session_id, conversation_history } = req.body as {
-      session_id: string
-      conversation_history: unknown[]
-    }
+    const body = req.body as TCreateTicketBody
 
-    if (!session_id || !Array.isArray(conversation_history)) {
+    if (!body.session_id || !Array.isArray(body.conversation_history)) {
       res.status(400).json({ error: "session_id and conversation_history are required" })
       return
     }
 
-    const result = await create_ticket(session_id, conversation_history as never[])
+    const result = await create_ticket(body)
     res.status(201).json(result)
   } catch (err) {
     log.error("Create error", err)
