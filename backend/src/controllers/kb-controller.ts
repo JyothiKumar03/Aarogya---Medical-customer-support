@@ -1,6 +1,7 @@
 import type { Request, Response } from "express"
 import { list_kb_entries, create_kb_entry, delete_kb_entry } from "../services/kb-service"
 import { create_logger } from "../services/logger-service"
+import { MAX_EMBED_INPUT_CHARS } from "../constants/thresholds"
 
 const log = create_logger("kb-controller")
 
@@ -25,6 +26,17 @@ export async function handle_create_kb(req: Request, res: Response): Promise<voi
 
     if (!title || !content || !Array.isArray(tags)) {
       res.status(400).json({ error: "title, content, and tags are required" })
+      return
+    }
+
+    const combined_len = title.length + content.length + 1
+    if (combined_len > MAX_EMBED_INPUT_CHARS) {
+      res.status(400).json({
+        error: "kb_entry_too_long",
+        message: `Title + content is ${combined_len} chars. Max is ${MAX_EMBED_INPUT_CHARS}. Split the entry into smaller, focused articles.`,
+        limit: MAX_EMBED_INPUT_CHARS,
+        received: combined_len,
+      })
       return
     }
 

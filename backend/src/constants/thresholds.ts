@@ -10,3 +10,8 @@ export const KB_RAG_TOP_K = 5
 // chat endpoint rejects new sends and the client surfaces "start new chat".
 // Mirrors MAX_USER_MESSAGES_PER_CHAT on the frontend keep them in sync.
 export const MAX_USER_MESSAGES_PER_CHAT = 4
+
+// Upper bound on characters passed to the embedding model in a single call.
+// text-embedding-3-small accepts ~8k tokens (~32k chars). 10k keeps a
+// safety margin and matches what a "KB-sized" article should ever be.
+export const MAX_EMBED_INPUT_CHARS = 10_000
