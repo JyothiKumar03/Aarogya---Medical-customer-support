@@ -22,6 +22,7 @@ function ticket_from_db(row: {
   customer_name: string | null
   customer_email: string | null
   customer_phone: string | null
+  additional_details: string | null
   created_at: Date
   updated_at: Date
 }): TTicket {
@@ -38,6 +39,7 @@ function ticket_from_db(row: {
     customer_name: row.customer_name ?? undefined,
     customer_email: row.customer_email ?? undefined,
     customer_phone: row.customer_phone ?? undefined,
+    additional_details: row.additional_details ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }
@@ -71,6 +73,7 @@ export async function create_ticket(
       customer_name: body.customer_name ?? null,
       customer_email: body.customer_email ?? null,
       customer_phone: body.customer_phone ?? null,
+      additional_details: body.additional_details ?? null,
       status: "open",
     },
   })

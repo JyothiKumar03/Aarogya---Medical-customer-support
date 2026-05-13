@@ -71,11 +71,12 @@ model Ticket {
   resolution_summary String?
   added_to_kb       Boolean  @default(false)
   kb_entry_id       String?
-  customer_name     String?
-  customer_email    String?
-  customer_phone    String?
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  customer_name      String?
+  customer_email     String?
+  customer_phone     String?
+  additional_details String?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
 
   kb_entry KbEntry? @relation(fields: [kb_entry_id], references: [id])
 }

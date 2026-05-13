@@ -117,6 +117,17 @@ export function TicketDrawer({ ticketId, open, onOpenChange }: Props) {
                 </section>
               )}
 
+              {ticket.additional_details && (
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Additional Details
+                  </h3>
+                  <div className="whitespace-pre-wrap break-words rounded-lg border border-border bg-card p-3 text-sm leading-relaxed">
+                    {ticket.additional_details}
+                  </div>
+                </section>
+              )}
+
               <section>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Conversation
