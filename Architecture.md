@@ -2,7 +2,7 @@
 
 ## System Overview
 
-A decoupled Express (backend) + Next.js (frontend) platform for a health insurance company's customer support. One AI agent (Aarogya) handles the full conversation lifecycle: replies conversationally to small-talk, calls a single `smart_search` tool for genuine health-insurance questions, and politely declines off-topic. The tool runs a pgvector RAG over a tag-filtered knowledge base (cosine similarity, top-K = 5, floor = 0.3), then a small LLM judge scores answerability of the retrieved context from 0–1; below `KB_CONFIDENCE_THRESHOLD = 0.6` the system falls back to a guardrailed Tavily web search whose top-5 hits are passed through a second LLM that classifies every URL as relevant or irrelevant and writes a single summarised answer the main agent can quote from. The KB judge and the web guardrail share a dedicated provider chain (OpenAI primary, Gemini fallback) so the main agent's model preference does not bias retrieval gating. If the customer is still unsatisfied the conversation can be escalated to a ticket, and resolved tickets optionally feed a Claude-generated summary back into the KB closing the self-improvement loop.
+A decoupled Express (backend) + Next.js (frontend) platform for a health insurance company's customer support. One AI agent (Aarogya) handles the full conversation lifecycle: replies conversationally to small-talk, calls a single `smart_search` tool for genuine health-insurance questions, and politely declines off-topic. The tool runs a pgvector RAG over a tag-filtered knowledge base (cosine similarity, top-K = 5, floor = 0.3), then a small LLM judge scores answerability of the retrieved context from 0–1; below `KB_CONFIDENCE_THRESHOLD = 0.6` the system falls back to a guardrailed Tavily web search whose top-5 hits are passed through a second LLM that classifies every URL as relevant or irrelevant and writes a neutral fact digest (third-person, no advice, no second-person language) the main agent quotes from to compose the final reply. **Web search is restricted to admin-curated domains** held in a `SearchSettings` row (`allowed_domains` + `blocked_domains`, edited from `/admin/settings`) and pushed into Tavily's `includeDomains` / `excludeDomains`. At chat-time the active domain list is also injected into the main agent's system prompt and the `smart_search` tool description as a "grounding context" block so the LLM frames its query around the brand behind those domains and never leaks the internal persona name into the web call. The KB judge and the web guardrail share a dedicated provider chain (OpenAI primary, Gemini fallback) so the main agent's model preference does not bias retrieval gating. If the customer is still unsatisfied the conversation can be escalated to a ticket the ticket form captures `customer_name`, `customer_email`, `customer_phone` and a Resend-powered transactional email goes out on creation. When the admin resolves it, a second branded email ships with the admin's notes verbatim, and resolved tickets optionally feed a Claude-generated summary back into the KB closing the self-improvement loop.
 
 ---
 
@@ -19,7 +19,8 @@ A decoupled Express (backend) + Next.js (frontend) platform for a health insuran
 | LLM resolution summariser + ticket summariser | `build_providers()` chain (any of the three) via `generateObject` with Zod schemas |
 | Embeddings | OpenAI `text-embedding-3-small` (256-dim) used for RAG and KB ingest |
 | Vector store | PostgreSQL (Neon) + pgvector extension column `embedding vector(256)` on `KbEntry`; cosine distance operator `<=>` |
-| Web search | Tavily SDK (`@tavily/core`) top-5 results, then LLM-classified into relevant/irrelevant URLs + a pre-written summary |
+| Web search | Tavily SDK (`@tavily/core`) top-5 results with admin-curated `includeDomains` / `excludeDomains`, then LLM-classified into relevant/irrelevant URLs + a neutral fact digest (no customer-facing prose, no advice). 15 s timeout, URL-normalised classification mapping. |
+| Transactional email | Resend (`resend` SDK) ticket-confirmation + ticket-resolution emails. HTML templates with gradient header, status pill, detail-card layout, XSS-safe (`escape_html`) interpolation, multiline-preserving resolution field |
 | DB | Prisma + PostgreSQL (Neon) |
 | Frontend UI base | Vercel `ai-chatbot` template + shadcn/ui |
 
@@ -34,27 +35,32 @@ A decoupled Express (backend) + Next.js (frontend) platform for a health insuran
 │   │   ├── controllers/
 │   │   │   ├── chat-controller.ts
 │   │   │   ├── ticket-controller.ts
-│   │   │   └── kb-controller.ts
+│   │   │   ├── kb-controller.ts
+│   │   │   └── settings-controller.ts  ← GET / PUT for SearchSettings row
 │   │   ├── routes/
 │   │   │   ├── chat-routes.ts
 │   │   │   ├── ticket-routes.ts
-│   │   │   └── kb-routes.ts
+│   │   │   ├── kb-routes.ts
+│   │   │   └── settings-routes.ts
 │   │   ├── services/
-│   │   │   ├── agent-service.ts        ← orchestrates streamText + smart_search tool + decision flow
+│   │   │   ├── agent-service.ts        ← orchestrates streamText + smart_search tool + decision flow; reads SearchSettings on each request and injects a dynamic "grounding block" into the system prompt + tool param description
 │   │   │   ├── ai-service.ts           ← model factory + generate/stream w/ fallback + two provider chains (main vs check)
 │   │   │   ├── embedding-service.ts    ← text-embedding-3-small (256-dim) wrapper
 │   │   │   ├── kb-service.ts           ← pgvector RAG + SQL tag filter + KB CRUD
 │   │   │   ├── score-service.ts        ← LLM judge on check-chain (user_query + tool_query + entries → confidence 0–1)
-│   │   │   ├── search-service.ts       ← Tavily SDK + LLM guardrail/summariser on check-chain (returns summary + relevant_urls + irrelevant_urls + reasoning)
-│   │   │   ├── ticket-service.ts       ← ticket lifecycle
+│   │   │   ├── search-service.ts       ← Tavily SDK (with allowed/blocked domain filters from SearchSettings, 15 s timeout, URL-normalised guardrail mapping) + LLM guardrail/summariser on check-chain (returns NEUTRAL fact digest + relevant_urls + irrelevant_urls + reasoning)
+│   │   │   ├── settings-service.ts     ← read/write the single SearchSettings row; lazy-creates default { allowed_domains: ["prudential.com"], blocked_domains: [] } on first call
+│   │   │   ├── email-service.ts        ← Resend wrapper send_ticket_confirmation + send_ticket_resolution. Shared HTML shell (gradient header, status pill, detail card, footer), escape_html-protected, multiline-aware resolution row
+│   │   │   ├── ticket-service.ts       ← ticket lifecycle persists customer_name/email/phone, fires confirmation email on create and resolution email on resolve (both .catch'd so email failures never break the API)
 │   │   │   ├── summarise-service.ts    ← resolution → KB summary
 │   │   │   └── logger-service.ts       ← structured scoped logger
 │   │   ├── db/
 │   │   │   ├── client.ts               ← Prisma singleton
-│   │   │   └── seed.ts                 ← seeds kb.json → DB on first run
+│   │   │   └── seed.ts                 ← seeds kb.json → DB on first run; also seeds a default SearchSettings row if none exists
 │   │   ├── types/
-│   │   │   ├── agent-types.ts
-│   │   │   ├── ticket-types.ts
+│   │   │   ├── agent-types.ts          ← + TWebSourceLink, + web_relevant_urls / web_irrelevant_urls on TResponseMetadata
+│   │   │   ├── ticket-types.ts         ← + customer_name / customer_email / customer_phone on TTicket and TCreateTicketBody
+│   │   │   ├── settings-types.ts       ← TSearchSettings, TUpdateSearchSettingsBody
 │   │   │   ├── kb-types.ts
 │   │   │   └── search-types.ts
 │   │   ├── constants/
@@ -76,32 +82,38 @@ A decoupled Express (backend) + Next.js (frontend) platform for a health insuran
     ├── app/
     │   ├── page.tsx                    ← customer chat
     │   ├── admin/
-    │   │   └── page.tsx                ← admin ticket dashboard
+    │   │   ├── page.tsx                ← admin ticket dashboard
+    │   │   └── settings/page.tsx       ← web grounding (allowed / blocked domains)
     │   └── layout.tsx
     ├── hooks/
     │   ├── use-chat.ts
     │   ├── use-tickets.ts
-    │   └── use-kb.ts
+    │   ├── use-kb.ts
+    │   └── use-settings.ts             ← GET / PUT SearchSettings, local optimistic state
     ├── components/
     │   ├── chat/
-    │   │   ├── ChatWindow.tsx
-    │   │   ├── MessageBubble.tsx
-    │   │   ├── SourceBadge.tsx          ← "From KB" / "From Web" / "AI"
-    │   │   ├── ConfidencePill.tsx       ← "KB match: 82%"
-    │   │   └── TicketCTA.tsx            ← "Still need help?" button
+    │   │   ├── chat-window.tsx
+    │   │   ├── message-bubble.tsx       ← renders SourceBadge + ConfidencePill + WebSourcesDropdown
+    │   │   ├── source-badge.tsx         ← "From KB" / "From Web" / "Aarogya"
+    │   │   ├── confidence-pill.tsx      ← "KB match: 82%"
+    │   │   ├── web-sources-dropdown.tsx ← collapsible card; two sections — Relevant + Filtered-out (per-url title + host, all open in new tab)
+    │   │   ├── TicketForm.tsx           ← in-chat name / email / phone form before ticket POST
+    │   │   └── ticket-cta.tsx           ← "Still need help?" button
     │   └── admin/
-    │       ├── TicketTable.tsx
-    │       ├── ResolveModal.tsx
-    │       └── KBFeedbackToggle.tsx     ← "Add resolution to KB" checkbox
+    │       ├── ticket-table.tsx
+    │       ├── ticket-drawer.tsx
+    │       ├── resolve-form.tsx         ← resolution_notes + add_to_kb toggle
+    │       ├── admin-sidebar.tsx        ← Tickets / KB / Settings nav
+    │       └── GroundingSettings.tsx    ← chip-style allowed/blocked domain editor + Save
     ├── lib/
-    │   └── api.ts                       ← typed fetch wrappers
+    │   └── api.ts                       ← typed fetch wrappers (chat, tickets, settings)
     └── types/
-        └── index.ts
+        └── index.ts                     ← + TWebSourceLink, + web_relevant_urls / web_irrelevant_urls on TResponseMetadata, + TSearchSettings
 ```
 
 ---
 
-## DB Schema (All 4 Tables)
+## DB Schema (All 5 Tables)
 
 ### `kb_entries`
 The knowledge base. Seeded from `data/kb.json`. New entries can be added via ticket resolution. Embeddings are generated via `text-embedding-3-small` (256-dim) at ingest time and stored as a native pgvector column for cosine-distance search.
@@ -150,7 +162,7 @@ Every search performed KB lookups and web searches. Audit trail and source for m
 | `created_at` | `DateTime @default(now())` | |
 
 ### `tickets`
-Support tickets created when user signals dissatisfaction. Full conversation stored.
+Support tickets created when user signals dissatisfaction. Full conversation stored. Customer contact fields are captured by the in-chat `TicketForm` at create time and drive the Resend email loop.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -159,11 +171,24 @@ Support tickets created when user signals dissatisfaction. Full conversation sto
 | `query_summary` | `String` | 1-line Haiku-generated summary of the user's issue |
 | `conversation_json` | `String` | Full `TMessage[]` as JSON string |
 | `status` | `String @default("open")` | `"open"` \| `"in_progress"` \| `"resolved"` |
-| `resolution_notes` | `String?` | Written by admin |
-| `resolution_summary` | `String?` | Claude-generated KB-ready Q&A |
+| `resolution_notes` | `String?` | Written by admin. This is what gets emailed to the customer on resolve verbatim, newlines preserved. |
+| `resolution_summary` | `String?` | When `add_to_kb` is true, stores the JSON-stringified KB-ready Q&A `{title, content, tags}`. Not sent in the email. |
 | `added_to_kb` | `Boolean @default(false)` | Was resolution pushed to KB |
 | `kb_entry_id` | `String?` | FK → kb_entries.id if added |
+| `customer_name` | `String?` | Captured at create time. Required by `TicketForm` so email send has a recipient name. |
+| `customer_email` | `String?` | Captured at create time. Email is only sent when both `customer_name` and `customer_email` are present. |
+| `customer_phone` | `String?` | Captured at create time. Not used yet; reserved for SMS/voice followups. |
 | `created_at` | `DateTime @default(now())` | |
+| `updated_at` | `DateTime @updatedAt` | |
+
+### `search_settings`
+A single-row table holding the active web-grounding configuration. Lazy-created with `{ allowed_domains: ["prudential.com"], blocked_domains: [] }` on first read (or seeded by `seed.ts`). Edited from `/admin/settings` via PUT `/api/settings`. Read on every chat request to inject the grounding block into the agent's system prompt and to set Tavily's `includeDomains` / `excludeDomains`.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `String @id @default(cuid())` | Only ever one row in practice |
+| `allowed_domains` | `String @default("[\"prudential.com\"]")` | JSON-stringified `string[]`. Empty array → no restriction (open web). |
+| `blocked_domains` | `String @default("[]")` | JSON-stringified `string[]`. Empty array → no exclusions. |
 | `updated_at` | `DateTime @updatedAt` | |
 
 ---
@@ -202,12 +227,21 @@ type TMessage = {
   metadata?: TResponseMetadata
 }
 
+type TWebSourceLink = {
+  url: string
+  title: string
+}
+
 type TResponseMetadata = {
   source: TMessageSource
-  confidence_score?: number     // For "kb": LLM judge confidence. For "web": WEB_CONFIDENCE_FLOOR. For "ai": 0
+  confidence_score?: number          // For "kb": LLM judge confidence. For "web": WEB_CONFIDENCE_FLOOR. For "ai": 0
   kb_entry_id?: string
-  web_source_url?: string        // primary (cited) URL
-  web_source_urls?: string[]     // primary + all related URLs returned by Tavily
+  web_source_url?: string            // primary (cited) URL
+  web_source_urls?: string[]         // legacy: primary + all related URLs (kept for backwards compat)
+  web_relevant_urls?: TWebSourceLink[]   // URLs the guardrail kept (title + url)
+  web_irrelevant_urls?: TWebSourceLink[] // URLs the guardrail rejected; still surfaced to the UI for transparency
+                                          // (also populated on the "ai" / no-relevant-hits path so the user can see
+                                          //  what was searched even when the answer falls back to a generic apology)
   search_result_id?: string
 }
 
@@ -229,8 +263,24 @@ type TTicket = {
   resolution_summary?: string
   added_to_kb: boolean
   kb_entry_id?: string
+  customer_name?: string
+  customer_email?: string
+  customer_phone?: string
   created_at: Date
   updated_at: Date
+}
+
+// settings-types.ts
+type TSearchSettings = {
+  id: string
+  allowed_domains: string[]   // includeDomains for Tavily; brand context for the agent prompt
+  blocked_domains: string[]   // excludeDomains for Tavily
+  updated_at: Date
+}
+
+type TUpdateSearchSettingsBody = {
+  allowed_domains: string[]
+  blocked_domains: string[]
 }
 
 // search-types.ts
@@ -266,11 +316,28 @@ This is the exact sequence for every user message.
 3.  chat-controller saves the user TMessage and invokes agent-service
         │
         ▼
-4.  agent-service runs Vercel AI SDK streamText with:
-    - system prompt (conversational; see constants/prompts.ts)
+4.  agent-service first reads the SearchSettings row (one cheap SELECT). It
+    derives:
+      - allowed_domains  : drives Tavily includeDomains AND the prompt brand-frame
+      - blocked_domains  : drives Tavily excludeDomains
+    A "grounding context" block is appended to the base AGENT_SYSTEM_PROMPT:
+        "Web search is restricted to: <allowed_domains>.
+         When you call smart_search:
+         - Frame the 'query' for the brand behind those domains
+           (prudential.com → 'Prudential', etc.)
+         - DO NOT include 'InsureCo' (internal persona, zero public-web presence)
+         - DO NOT invent competitor insurer names."
+    The same anti-leak wording is also stamped into the smart_search 'query'
+    parameter's z.string().describe(...) text so it shows up at the schema
+    level next to the field the LLM is filling.
+
+    If allowed_domains is empty, the grounding block is omitted (open-web mode).
+
+    agent-service then runs Vercel AI SDK streamText with:
+    - system prompt   (AGENT_SYSTEM_PROMPT + grounding block)
     - full conversation history
-    - ONE tool: smart_search
-    - maxSteps: 2   (cap on one tool round-trip)
+    - ONE tool: smart_search   (with dynamic 'query' param description)
+    - maxSteps: 2              (cap on one tool round-trip)
     - onFinish: idempotent fallback that resolves the metadata promise
                  to { source: "ai", confidence_score: 0 } so the SSE
                  "done" event always fires even when no tool is called
@@ -320,18 +387,38 @@ This is the exact sequence for every user message.
         │     - Resolve metadata { source: "kb", confidence_score, kb_entry_id, search_result_id }
         │
         └── Otherwise (no hits OR confidence < 0.6) → web fallback:
-              search-service.web_search(query + " health insurance India")
-              - Tavily SDK (@tavily/core), maxResults: 5
+              search-service.web_search(query)
+              - Reads SearchSettings (with safe defaults if DB blip)
+              - Tavily SDK (@tavily/core), maxResults: 5, searchDepth: "advanced",
+                  includeDomains: allowed_domains.length > 0 ? allowed_domains : undefined
+                  excludeDomains: blocked_domains.length > 0 ? blocked_domains : undefined
+                  (empty arrays are coerced to undefined Tavily treats `[]` as
+                   "restrict to zero domains" in some versions)
+              - 15 s timeout wraps the Tavily call; on timeout or any other
+                Tavily error → log.warn + return { found: false }
+              - If TAVILY_API_KEY is unset → early-return { found: false }
+                with a clear log line
               - Guardrail + summariser LLM (check-chain: OpenAI primary,
                 Gemini fallback) reads ALL 5 hits and the user query, and
                 returns a single structured object:
                   {
-                    final_summarized_output: string,   // 2–4 sentence answer
+                    final_summarized_output: string,   // NEUTRAL fact digest, 2–5
+                                                       // third-person sentences,
+                                                       // no advice, no second-person,
+                                                       // attributes per source when
+                                                       // a claim is source-specific,
+                                                       // preserves source qualifiers
+                                                       // ("subject to underwriting", etc.)
                     relevant_urls:    string[],        // URLs that helped
                     irrelevant_urls:  string[],        // URLs rejected as off-topic
                     reasoning:        string
                   }
-              - If relevant_urls is empty → treated as a web miss.
+              - The LLM's URL strings are matched back to the original Tavily
+                hits via `normalise_url()` (host lowercased, `www.` stripped,
+                trailing slash removed, scheme dropped) so minor rewrites by
+                the LLM don't silently drop hits. De-duped per list.
+              - If relevant_urls is empty → treated as a web miss, but
+                irrelevant_urls is still returned for transparency.
               - Otherwise return:
                   { found: true, summary, relevant_urls[], irrelevant_urls[], reasoning }
                     │
@@ -340,27 +427,48 @@ This is the exact sequence for every user message.
                 - Save `search_results` (search_type: "web",
                   confidence: WEB_CONFIDENCE_FLOOR,
                   web_source_url: relevant_urls[0].url,
-                  used: true; full payload in results_json)
+                  used: true; full payload in results_json incl. irrelevant_urls)
                 - Return to main agent:
                   { found: true, source: "web", summary, relevant_urls, disclaimer }
-                - Resolve metadata { source: "web", confidence_score,
-                                     web_source_url, web_source_urls, search_result_id }
+                - Resolve metadata {
+                    source: "web",
+                    confidence_score,
+                    web_source_url,
+                    web_source_urls,
+                    web_relevant_urls:    TWebSourceLink[],  // {url, title}
+                    web_irrelevant_urls:  TWebSourceLink[],  // {url, title}
+                    search_result_id
+                  }
                     │
               On web miss:
-                - Resolve metadata { source: "ai", confidence_score: 0 }
+                - Resolve metadata {
+                    source: "ai",
+                    confidence_score: 0,
+                    web_irrelevant_urls?: TWebSourceLink[]   // surface what was
+                                                              // searched, so the UI
+                                                              // can show "we did look
+                                                              // — here's what got
+                                                              // rejected"
+                  }
                 - Return { found: false, source: "ai", reason }
         │
         ▼
 10. Main agent composes the user-facing answer grounded in the tool result
     (or, in the no-tool-call branch, answers directly). For source = "web",
-    the agent quotes from `summary` rather than reading raw web content
-    the heavy lifting (classification + synthesis) already happened in the
-    guardrail/summariser step.
+    the agent quotes from `summary` (the neutral fact digest) rather than
+    reading raw web content the heavy lifting (classification + neutral
+    synthesis) already happened in the guardrail/summariser step. The
+    agent owns the customer-facing voice and the disclaimer.
         │
         ▼
-11. For web answers: the response ends with a "Sources:" footer that bullets
-    every entry in `relevant_urls` as "<title> <url>". Irrelevant URLs are
-    dropped from user-facing output but persisted in `results_json` for audit.
+11. For web answers: the streamed answer ends with a "Sources:" footer that
+    lists every entry in `relevant_urls` as a *numbered title-only* line
+    ("[1] <title>", "[2] <title>"). URLs are intentionally NOT inlined the
+    UI renders clickable sources separately. Both the relevant AND irrelevant
+    URLs are sent on the SSE metadata event and surfaced in a collapsible
+    "Web sources" dropdown below the message bubble (relevant section in
+    green w/ checkmarks; filtered-out section in muted with cancel-icons +
+    short note explaining the rejection).
         │
         ▼
 12. chat-controller persists the assistant TMessage with metadata.
@@ -369,16 +477,23 @@ This is the exact sequence for every user message.
 13. SSE stream to frontend:
     - event: delta     (text chunks)
     - event: metadata  ({ source, confidence_score, kb_entry_id?,
-                          web_source_url?, web_source_urls?, search_result_id? })
+                          web_source_url?, web_source_urls?,
+                          web_relevant_urls?, web_irrelevant_urls?,
+                          search_result_id? })
     - event: done
         │
         ▼
 14. UI renders:
-    - Message bubble
-    - SourceBadge: "From KB" (green) | "From Web" (amber) | "Aarogya" (gray)
+    - Message bubble (assistant text streams in token-by-token)
+    - SourceBadge: "Answered from KB" (green) | "Answered from Web" (amber) | "Aarogya" (gray)
     - ConfidencePill: "KB match: 82%" only when source = "kb"
-    - URL list under web answers (rendered from web_source_urls)
+    - WebSourcesDropdown: collapsible card, only when any URL is present.
+        Header chip: "Web sources · N relevant · M filtered out"
+        On expand: two sections (Relevant ✓ in green, Filtered out ✗ in muted)
+        with per-row title + host (e.g. "[PDF] GI Critical Illness Summary
+        / web.prudential.com"), each opens in a new tab.
     - TicketCTA: "Still need help? → Create a ticket"
+        → opens TicketForm (name / email / phone) inline below the message
 ```
 
 ---
@@ -404,24 +519,36 @@ Retrieval is a **two-stage** pipeline: a cheap pgvector recall pass, followed by
 - Judges whether the entries actually *answer* the question, not just topical overlap. Keyword matches without answers score < 0.3; requests for account-specific data are capped ≤ 0.3.
 - The judge's `confidence` is the value compared against `KB_CONFIDENCE_THRESHOLD` and the value shown in the UI's "KB match: X%" pill.
 
-### Web guardrail / summariser (`search-service.web_search`)
+### Web guardrail / fact extractor (`search-service.web_search`)
 
-When KB confidence < 0.6, the system queries Tavily and then runs a single LLM pass on the **check-provider chain** (OpenAI primary, Gemini fallback) that does both relevance classification and answer synthesis in one shot:
+When KB confidence < 0.6, the system queries Tavily under the admin-curated domain filter and then runs a single LLM pass on the **check-provider chain** (OpenAI primary, Gemini fallback) that does both relevance classification and **neutral fact extraction** in one shot:
 
-- Input: `USER_QUERY` + the 5 Tavily hits (title, url, content).
+- Input: `USER_QUERY` + the 5 Tavily hits (title, url, content). Tavily call itself uses `includeDomains` / `excludeDomains` from `SearchSettings` and is wrapped in a 15 s timeout.
 - Output (via `generateObject` with a Zod schema):
   ```ts
   {
-    final_summarized_output: string,   // 2-4 sentence answer drawn ONLY from relevant hits
-    relevant_urls:    string[],        // URLs that genuinely answer USER_QUERY in a health-insurance context
-    irrelevant_urls:  string[],        // URLs rejected as off-topic / unhelpful (still kept in audit)
+    final_summarized_output: string,   // NEUTRAL fact digest, 2-5 third-person sentences,
+                                       // drawn ONLY from relevant hits. No advice,
+                                       // no second-person, no imperatives, no hedging,
+                                       // no call-to-action, no closing disclaimer
+                                       // (the main agent owns those).
+                                       // Numbers / qualifiers / clause names lifted
+                                       // verbatim; conflicts surfaced as both
+                                       // ("Source A states X; Source B states Y").
+    relevant_urls:    string[],        // URLs that genuinely answer USER_QUERY
+    irrelevant_urls:  string[],        // URLs rejected as off-topic / unhelpful
     reasoning:        string
   }
   ```
-- If `relevant_urls` is empty → treated as a web miss (main agent gets `source: "ai", found: false`).
-- The main agent never sees raw web content; it quotes from `final_summarized_output` and renders `relevant_urls` as the Sources footer. This keeps the main-agent prompt tight and ensures off-topic web junk cannot end up in the response.
+- The LLM's URL strings are run through `normalise_url()` and matched back to the Tavily hit list to recover `{url, title}` pairs. Hits the LLM rewrites trivially (trailing slash, www., scheme) are still recovered. De-duped per list.
+- If `relevant_urls` is empty → treated as a web miss; the irrelevant list still propagates to the UI so customers can see what was searched and why nothing was kept.
+- The main agent never sees raw web content; it quotes from `final_summarized_output` and renders titles in a "Sources:" footer (numbered, title only no URLs). The clickable URL surface area lives in the dropdown UI, not in the streamed answer.
+
+**Why "neutral fact digest" and not "answer to USER_QUERY"?** The earlier iteration had the guardrail produce a customer-facing answer, which leaked phrasing/bias/hedging into the streamed reply (since the main agent was told to "stick to what the summary says"). Splitting the work the guardrail extracts facts, the main agent composes prose keeps the customer-facing voice consistent and lets the main agent own disclaimers and tone.
 
 **Why a separate check-provider chain?** The KB judge and the web guardrail both gate what the main agent is allowed to say. Running them on a different vendor from the main agent (OpenAI/Gemini vs Anthropic for the main agent) means a quirk in one vendor's instruction-following can't simultaneously bias retrieval gating *and* answer composition.
+
+**Why admin-curated domains and not free Tavily?** The brief asked for "curated grounding" rather than a KB update. With a free Tavily call the system would surface anything topical (random hospital ads, news, lifestyle blogs). With `allowed_domains: ["prudential.com"]` we restrict the search surface to a known-trustworthy publisher and the dynamic prompt block tells the agent to frame its query around that brand, so "claim settlement ratio for my plan" doesn't get rewritten into a confused multi-brand search. An admin can add `irdai.gov.in`, `policybazaar.com`, etc. at any time from `/admin/settings`; the next chat request rebinds immediately (no caching, single SELECT).
 
 ### Embedding function (`services/embedding-service.ts`)
 
@@ -446,20 +573,39 @@ export const KB_RAG_TOP_K                   = 5    // pgvector limit
 ## Ticket Creation Flow
 
 ```
-User clicks "Still need help?" or types "raise a ticket"
+User clicks "Still need help?"
+        │
+        ▼
+TicketForm appears inline below the message bubble
+  - name      (required)
+  - email     (required, email-pattern validated)
+  - phone     (required, captured for future SMS/voice followups)
         │
         ▼
 POST /api/tickets
-Body: { session_id, conversation_history: TMessage[] }
+Body: { session_id, conversation_history: TMessage[],
+        customer_name, customer_email, customer_phone }
         │
         ▼
 ticket-service.create_ticket():
   1. LLM call: generate query_summary from last 3 user messages (1 sentence max)
-  2. INSERT ticket row (status: "open", conversation_json: serialised history)
-  3. Return { ticket_id, status: "open" }
+  2. INSERT ticket row (status: "open", conversation_json: serialised history,
+                        customer_name / email / phone persisted)
+  3. Fire-and-forget: send_ticket_confirmation({ to, customer_name, ticket_id,
+                                                 query_summary })
+       - Resend SDK; HTML built from the shared `shell()` template
+         (gradient header, status pill "Open" blue, detail card, footer)
+       - Subject: "We've got your request #ABC12345"
+       - Preheader: "Ticket #ABC12345 received we'll respond within 24 hours."
+       - All user-supplied fields escape_html'd
+       - `.catch(err => log.error(...))` so an email send failure NEVER
+         breaks the ticket POST
+  4. Return { ticket_id, status: "open", query_summary }
         │
         ▼
-UI: "Ticket #T-019 created. Our team will reach out within 24 hours."
+UI: toast "Ticket created — confirmation sent to <email>. Our team will reach
+     out within 24 hours."
+     Inline ticket-id banner stays under the message bubble.
 ```
 
 ---
@@ -476,24 +622,36 @@ Body: { resolution_notes: string, add_to_kb: boolean }
         ▼
 ticket-service.resolve_ticket():
   1. UPDATE ticket: status → "resolved", resolution_notes saved
-  2. Call summarise-service.generate_resolution_summary(conversation, resolution_notes)
-            │
-            └── claude-haiku-4-5-20251001 call:
-                "Given this support conversation and the agent's resolution notes,
-                 produce a KB entry. Return ONLY valid JSON:
-                 { title: string, content: string, tags: string[] }
-                 Tags must be from the approved list only.
-                 Answer must be 2–3 sentences, factual, no first-person pronouns."
-            │
-            └── Parse JSON, validate tags against APPROVED_TAGS
-  3. Store resolution_summary on ticket row
-  4. If add_to_kb = true:
-       - Append to data/kb.json (persist across restarts)
+  2. If add_to_kb = true:
+       - Call summarise-service.generate_resolution_summary(conversation, notes)
+              │
+              └── claude-haiku-4-5-20251001 call:
+                  "Given this support conversation and the agent's resolution notes,
+                   produce a KB entry. Return ONLY valid JSON:
+                   { title: string, content: string, tags: string[] }
+                   Tags must be from the approved list only.
+                   Answer must be 2–3 sentences, factual, no first-person pronouns."
+              │
+              └── Parse JSON, validate tags against APPROVED_TAGS
+       - Store JSON.stringify(summary) on ticket.resolution_summary
        - INSERT KBEntry (source: "ticket-resolution", ticket_id)
        - UPDATE ticket: added_to_kb = true, kb_entry_id = new entry id
+  3. Fire-and-forget: send_ticket_resolution({ to, customer_name,
+                                               ticket_id, query_summary,
+                                               resolution_summary: data.resolution_notes })
+       - IMPORTANT: the email carries the admin's resolution_notes verbatim,
+         NOT the KB-generated summary. The KB summary is neutral / third-person
+         / retrieval-optimised; the notes are what the human teammate actually
+         wrote and what the customer should read.
+       - HTML template uses the same `shell()` chrome as the confirmation
+         email, with the status pill flipped to "Resolved" (green) and a
+         multiline-aware Resolution row that preserves newlines in the notes.
+       - All user-supplied fields escape_html'd.
+       - `.catch(err => log.error(...))` so email failure never breaks resolve.
         │
         ▼
-Admin sees: "Resolved. Added to KB as entry kb-018."
+Admin sees: "Resolved." (and if add_to_kb was on: "Added to KB as entry kb-018.")
+Customer receives the resolution email within seconds.
 ```
 
 ---
@@ -537,10 +695,12 @@ Rules when a tool result is present:
 7. After ~3 unresolved exchanges on the same topic, offer a support ticket.
 ```
 
-The two helper prompts also live in `prompts.ts`:
+**At request time** (in `agent-service.stream_agent_response`) the prompt has a "Web grounding context" block appended IF `allowed_domains.length > 0`. The block lists the active domains, names the brand-frame rule ("prudential.com → Prudential"), and explicitly forbids leaking the internal persona name "InsureCo" into the `query` field. The same anti-leak instruction is also stamped into the `smart_search` tool's `query` parameter description via `z.string().describe(...)`. Both texts are recomputed every request, so changing `/admin/settings` immediately reshapes the next call no caching.
+
+The four helper prompts also live in `prompts.ts`:
 
 - `SCORE_SYSTEM_PROMPT` LLM judge rubric (described in the Retrieval section above).
-- `WEB_GUARDRAIL_PROMPT` binary relevance filter applied to the top Tavily result before web content reaches the agent.
+- `WEB_GUARDRAIL_PROMPT` neutral fact extractor + relevance classifier. Output is a third-person digest the main agent quotes from no second-person, no advice, no closing disclaimer (the main agent owns those).
 - `SUMMARY_SYSTEM_PROMPT` Haiku call that converts a resolved ticket into a KB entry.
 - `TICKET_SUMMARY_PROMPT` Haiku call that condenses a session into a one-line ticket summary.
 
@@ -550,15 +710,23 @@ The two helper prompts also live in `prompts.ts`:
 
 ```
 POST   /api/chat                         ← streaming agent endpoint (SSE)
-POST   /api/chat/:session_id/ticket      ← create ticket from a session
+POST   /api/tickets                      ← create ticket (body now includes
+                                           customer_name / email / phone; fires
+                                           Resend confirmation on success)
 
 GET    /api/tickets                      ← list tickets (admin, paginated)
 GET    /api/tickets/:id                  ← single ticket detail + conversation
-PATCH  /api/tickets/:id                  ← resolve + optional KB push
+PATCH  /api/tickets/:id                  ← resolve + optional KB push; fires
+                                           Resend resolution email on success
 
 GET    /api/kb                           ← list KB entries
 POST   /api/kb                           ← manually add KB entry (admin)
 DELETE /api/kb/:id                       ← remove KB entry (admin)
+
+GET    /api/settings                     ← read the single SearchSettings row
+PUT    /api/settings                     ← update allowed_domains / blocked_domains
+                                           (both required arrays; takes effect
+                                           on the next /api/chat request)
 ```
 
 ### SSE Response Format for `/api/chat`
@@ -577,16 +745,46 @@ event: done
 data: {}
 ```
 
-For web answers the metadata payload additionally includes `web_source_url` (primary) and `web_source_urls` (primary + every related URL):
+For web answers the metadata payload includes the full URL set in two shapes flat URL strings (`web_source_url`, `web_source_urls`) for legacy/quick rendering, plus structured `{url, title}` pairs (`web_relevant_urls`, `web_irrelevant_urls`) that drive the in-message "Web sources" dropdown:
 
 ```
 event: metadata
-data: {"source":"web","confidence_score":0.5,
-       "web_source_url":"https://example.com/knee-replacement",
-       "web_source_urls":["https://example.com/knee-replacement",
-                          "https://irdai.gov.in/coverage",
-                          "https://policybazaar.com/..."],
-       "search_result_id":"sr-abc"}
+data: {
+  "source": "web",
+  "confidence_score": 0.5,
+  "web_source_url": "https://web.prudential.com/.../GI_Critical_Illness_Summary.pdf",
+  "web_source_urls": [
+    "https://web.prudential.com/.../GI_Critical_Illness_Summary.pdf",
+    "https://web.prudential.com/.../GL.2013.078.pdf",
+    "https://web.prudential.com/.../GI_Critical_Illness_Flyer.pdf",
+    "https://www.prudential.com/.../Prudential+Healthcare+Guide.pdf"
+  ],
+  "web_relevant_urls": [
+    { "url": "https://web.prudential.com/.../GI_Critical_Illness_Summary.pdf",
+      "title": "[PDF] STRATEGIES FOR ADDING CRITICAL ILLNESS INSURANCE TO..." },
+    { "url": "https://web.prudential.com/.../GL.2013.078.pdf",
+      "title": "[PDF] Critical Illness Insurance Claim Form Prudential Financial" }
+  ],
+  "web_irrelevant_urls": [
+    { "url": "https://web.prudential.com/.../CARE-annuities.pdf",
+      "title": "[PDF] CARE Prudential Annuities" }
+  ],
+  "search_result_id": "sr-abc"
+}
+```
+
+On the "no relevant web hits" path the metadata still ships `web_irrelevant_urls` so the UI can show "we did search here's what got rejected", but `source` resolves to `"ai"` and the agent falls through to its apology + ticket-offer branch:
+
+```
+event: metadata
+data: {
+  "source": "ai",
+  "confidence_score": 0,
+  "web_irrelevant_urls": [
+    { "url": "https://investor.prudential.com/.../earnings-q3-2024.aspx",
+      "title": "Earnings Q3 2024" }
+  ]
+}
 ```
 
 For no-tool responses (greetings, declines, ambiguity prompts) the SDK's `onFinish` hook resolves a fallback metadata so the `done` event still fires:
@@ -616,7 +814,7 @@ data: {}
 KB match: 84%
 ```
 
-For `source: "web"` the UI also renders the URL list from `metadata.web_source_urls` (primary first, then related), so the user can verify the answer against every source the system retrieved cited and non-cited alike.
+For `source: "web"` (and for `"ai"` responses that came after a web search but produced no relevant hits) the UI also renders the **WebSourcesDropdown** below the message bubble a collapsible card with two sections: green-checkmarked "Relevant" entries on top, muted "Filtered out" entries below with a short note explaining the rejection. Each row shows the page title and host; clicking opens the URL in a new tab. URLs are matched into `{url, title}` pairs via `metadata.web_relevant_urls` / `metadata.web_irrelevant_urls`. The agent's streamed answer mirrors this in text-only form: a numbered "Sources:" footer with titles only, no inline URLs (the dropdown is the canonical place for clickable sources).
 
 ---
 
@@ -624,19 +822,28 @@ For `source: "web"` the UI also renders the URL list from `metadata.web_source_u
 
 ### `/` Customer Chat
 - ChatGPT-style message history
-- Each AI message: SourceBadge + ConfidencePill (when source = "kb")
+- Each AI message: SourceBadge + ConfidencePill (when source = "kb") + WebSourcesDropdown (when any URL is present)
 - TicketCTA below every AI response: "Still need help? → Create a ticket"
-- Inline ticket confirmation with ticket ID on creation
+- Clicking the CTA opens **TicketForm** inline below the message: name + email + phone (all required) + Cancel / Create. Submits to POST /api/tickets. On success, inline confirmation banner shows the ticket id + a toast "confirmation sent to <email>".
 - Session ID is a per-chat UUID kept in `localStorage` under `insureco.session_id`. Persists across reloads so a refresh mid-conversation doesn't lose state. **Rotated on "New chat"** (and when the message limit is hit) so the backend's session-scoped rows correspond to one conversation.
 - Hard cap: `MAX_USER_MESSAGES_PER_CHAT = 4`. When the user has sent 4 messages, the input disables, a banner appears with a "Start new chat" button, and the next send (if somehow bypassed client-side) is rejected by the backend with HTTP 429 (`chat_limit_reached`). Both the frontend (`lib/limits.ts`) and the backend (`constants/thresholds.ts`) carry the same constant keep them in sync.
 
 ### `/admin` Admin Dashboard
 - Protected by `ADMIN_SECRET` env var (simple auth header or login page)
+- Sidebar nav: **Tickets** · **KB** · **Settings**
 - Stats row: total tickets | open | resolved today | KB entries
-- Ticket table: ID, query summary, status badge, created_at, action buttons
-- Click ticket → drawer with full conversation + all message metadata
-- Resolve modal: resolution notes textarea + "Add to KB" toggle + Resolve button
+- Ticket table: ID, query summary, status badge, created_at, customer email, action buttons
+- Click ticket → drawer with full conversation + all message metadata + customer contact info
+- Resolve form: resolution notes textarea + "Add to KB" toggle + Resolve button. Resolution notes are what get emailed to the customer verbatim newlines preserved.
 - KB tab: table of all entries, source badge (manual/ticket-resolution), delete button
+
+### `/admin/settings` Web Grounding
+- Two-column chip editor:
+  - **Allowed Domains** (green chips): Tavily's `includeDomains`. Each chip is a domain string with an `×` to remove. An input + Add button to append. Empty = "no restriction (open web)".
+  - **Blocked Domains** (red chips): Tavily's `excludeDomains`. Same chip UX.
+- Domain validation: `/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/` (no subdomains-of-subdomains gymnastics; admin can also paste `www.x.com` and it normalises lowercase).
+- Save → PUT /api/settings. State is optimistic and toasts on success.
+- "Changes apply immediately to all new queries." There is no caching layer the next `/api/chat` request reads the row.
 
 ---
 
@@ -850,8 +1057,11 @@ export type TKBTag = typeof APPROVED_TAGS[number]
 
 - Embedding generation requires an internet call to OpenAI per query (~200ms). No local cache.
 - Stage-2 LLM judge adds one Haiku call per RAG-having query (~300–500ms). Worth it for precision but it is a latency cost.
-- Tavily web search is rate-limited by plan; no caching layer in front of it.
+- Tavily web search is rate-limited by plan; no caching layer in front of it. The 15 s timeout is the only safety net.
+- `SearchSettings` is read on every chat request (one cheap SELECT). For higher QPS this should be cached in process memory with a TTL or invalidated on PUT /api/settings.
+- Resend transactional email is fire-and-forget; failures are logged but not retried. No bounce / delivery webhook handling. `RESEND_FROM_MAIL` must be a verified sender or `onboarding@resend.dev` for sandbox.
 - No user authentication. Sessions are anonymous per-chat UUIDs in localStorage (rotated on "New chat").
 - Admin panel uses env-var header check only not production-grade auth.
 - `kb.json` is a flat file used only for first-time seed; the running source of truth is Postgres.
 - Admin panel polls for new tickets every 30s no real-time push.
+- Web-grounding settings are global, not per-tenant. A multi-brand deployment would need `session_id`-scoped or org-scoped settings rows.

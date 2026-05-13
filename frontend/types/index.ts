@@ -9,11 +9,19 @@ export type TMessageSource = "kb" | "web" | "ai"
 export type TTicketStatus = "open" | "in_progress" | "resolved"
 export type TKBSource = "manual" | "ticket-resolution"
 
+export type TWebSourceLink = {
+  url: string
+  title: string
+}
+
 export type TResponseMetadata = {
   source: TMessageSource
   confidence_score?: number
   kb_entry_id?: string
   web_source_url?: string
+  web_source_urls?: string[]
+  web_relevant_urls?: TWebSourceLink[]
+  web_irrelevant_urls?: TWebSourceLink[]
   search_result_id?: string
 }
 
@@ -52,6 +60,10 @@ export type TTicket = {
   resolution_summary?: string
   added_to_kb: boolean
   kb_entry_id?: string
+  customer_name?: string
+  customer_email?: string
+  customer_phone?: string
+  additional_details?: string
   created_at: string
   updated_at: string
 }
@@ -63,7 +75,7 @@ export type TTicketListResponse = {
 
 export type TCreateTicketResponse = {
   ticket_id: string
-  status: TTicketStatus
+  status: string
   query_summary: string
 }
 

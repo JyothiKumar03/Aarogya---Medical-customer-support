@@ -4,6 +4,7 @@ import { create_model, type TProviderConfig } from "./ai-service"
 import { search_kb } from "./kb-service"
 import { score_kb_results } from "./score-service"
 import { web_search } from "./search-service"
+import { get_search_settings } from "./settings-service"
 import { AGENT_SYSTEM_PROMPT } from "../constants/prompts"
 import {
   KB_CONFIDENCE_THRESHOLD,
@@ -14,12 +15,19 @@ import { create_logger } from "./logger-service"
 
 const log = create_logger("agent-service")
 
+export type TWebSourceLink = {
+  url: string
+  title: string
+}
+
 export type TAgentResponseMetadata = {
   source: "kb" | "web" | "ai"
   confidence_score: number
   kb_entry_id?: string
   web_source_url?: string
   web_source_urls?: string[]
+  web_relevant_urls?: TWebSourceLink[]
+  web_irrelevant_urls?: TWebSourceLink[]
   search_result_id?: string
 }
 
@@ -57,18 +65,42 @@ export async function stream_agent_response(
   const model = create_model(provider)
   let last_error: Error | null = null
 
+  let allowed_domains: string[] = []
+  let blocked_domains: string[] = []
+  try {
+    const settings = await get_search_settings()
+    allowed_domains = Array.isArray(settings.allowed_domains) ? settings.allowed_domains : []
+    blocked_domains = Array.isArray(settings.blocked_domains) ? settings.blocked_domains : []
+  } catch (err) {
+    log.warn(
+      `Failed to load search settings, proceeding without grounding hints: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  const grounding_block =
+    allowed_domains.length > 0
+      ? `\n\n## Web grounding context\n\nWhen the agent's KB is insufficient, web search is restricted to: ${allowed_domains.join(", ")}${blocked_domains.length > 0 ? ` (and explicitly excludes: ${blocked_domains.join(", ")})` : ""}.\n\nWhen you call smart_search:\n- Frame the 'query' for the publicly-known brand behind those domains (e.g. x.com → "x", y.com → "y", irdai.gov.in → "IRDAI"). Mention the brand once when relevant.\n- DO NOT include the internal persona name "InsureCo" in the 'query' field "InsureCo" is your internal employer name and has no presence on the public web; including it will sabotage retrieval.\n- DO NOT invent competitor insurer names. Only include other insurers if the user mentioned them verbatim.`
+      : ""
+
+  const system_prompt = AGENT_SYSTEM_PROMPT + grounding_block
+
+  const query_description =
+    allowed_domains.length > 0
+      ? `The user's question reformulated for web/KB search. Web search is restricted to: ${allowed_domains.join(", ")}. Frame the query around the brand behind those domains (e.g. x.com → "x"). NEVER include "InsureCo" in this field it is an internal name with no public web presence.`
+      : `The user's question reformulated for search. Keep it under 15 words; do not include the internal persona name "InsureCo" in this field.`
+
   for (let attempt = 1; attempt <= RETRIES; attempt++) {
     try {
       const { textStream } = await streamText({
         model,
-        system: AGENT_SYSTEM_PROMPT,
+        system: system_prompt,
         messages,
         tools: {
           smart_search: tool({
             description:
-              "Search the InsureCo knowledge base for health insurance information. Always call this for every user query. The decision to use KB or fall back to the web is made automatically you only receive the final result.",
+              "Search the knowledge base for health insurance information. Always call this for every user query. The decision to use KB or fall back to the web is made automatically you only receive the final result.",
             parameters: z.object({
-              query: z.string().describe("The user's question verbatim"),
+              query: z.string().describe(query_description),
               tags: z
                 .array(z.string())
                 .describe(
@@ -172,11 +204,19 @@ export async function stream_agent_response(
                     },
                   })
 
+                  const irrelevant_links = (web_result.irrelevant_urls ?? []).map((r) => ({
+                    url: r.url,
+                    title: r.title,
+                  }))
+                  const relevant_links = relevant.map((r) => ({ url: r.url, title: r.title }))
+
                   resolve_metadata({
                     source: "web",
                     confidence_score: WEB_CONFIDENCE_FLOOR,
                     web_source_url: primary.url,
                     web_source_urls: all_urls,
+                    web_relevant_urls: relevant_links,
+                    web_irrelevant_urls: irrelevant_links,
                     search_result_id: search_result.id,
                   })
 
@@ -193,10 +233,17 @@ export async function stream_agent_response(
                   }
                 }
 
-                // 5. Nothing usable
+                // 5. Nothing usable surface the rejected web hits (if any)
+                //    for transparency so the UI can show what was searched.
+                const irrelevant_links = (web_result.irrelevant_urls ?? []).map((r) => ({
+                  url: r.url,
+                  title: r.title,
+                }))
+
                 resolve_metadata({
                   source: "ai",
                   confidence_score: 0,
+                  web_irrelevant_urls: irrelevant_links.length > 0 ? irrelevant_links : undefined,
                 })
 
                 return {

@@ -10,12 +10,19 @@ export type TMessage = {
   metadata?: TResponseMetadata
 }
 
+export type TWebSourceLink = {
+  url: string
+  title: string
+}
+
 export type TResponseMetadata = {
   source: TMessageSource
   confidence_score?: number
   kb_entry_id?: string
   web_source_url?: string
   web_source_urls?: string[]
+  web_relevant_urls?: TWebSourceLink[]
+  web_irrelevant_urls?: TWebSourceLink[]
   search_result_id?: string
 }
 

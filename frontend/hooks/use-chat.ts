@@ -12,11 +12,10 @@ type TUseChat = {
   isStreaming: boolean
   userMessageCount: number
   atLimit: boolean
+  conversationHistory: TMessage[]
   send: (text: string) => Promise<void>
   stop: () => void
   reset: () => void
-  createTicket: () => Promise<{ ticket_id: string } | null>
-  isCreatingTicket: boolean
 }
 
 export function useChat(sessionId: string): TUseChat {
@@ -137,19 +136,10 @@ export function useChat(sessionId: string): TUseChat {
     setIsStreaming(false)
   }, [])
 
-  const ticketMutation = useMutation({
-    mutationFn: () =>
-      ticketApi.create(
-        sessionId,
-        messages.filter((m) => !m.pending && !m.errored)
-      ),
-  })
-
-  const createTicket = useCallback(async () => {
-    if (!sessionId) return null
-    const result = await ticketMutation.mutateAsync()
-    return { ticket_id: result.ticket_id }
-  }, [sessionId, ticketMutation])
+  const conversationHistory = useMemo(
+    () => messages.filter((m) => !m.pending && !m.errored),
+    [messages]
+  )
 
   return useMemo(
     () => ({
@@ -157,22 +147,20 @@ export function useChat(sessionId: string): TUseChat {
       isStreaming,
       userMessageCount,
       atLimit,
+      conversationHistory,
       send,
       stop,
       reset,
-      createTicket,
-      isCreatingTicket: ticketMutation.isPending,
     }),
     [
       messages,
       isStreaming,
       userMessageCount,
       atLimit,
+      conversationHistory,
       send,
       stop,
       reset,
-      createTicket,
-      ticketMutation.isPending,
     ]
   )
 }

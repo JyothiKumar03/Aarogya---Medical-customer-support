@@ -5,6 +5,8 @@ import { create_logger } from "./services/logger-service"
 import chat_routes from "./routes/chat-routes"
 import ticket_routes from "./routes/ticket-routes"
 import kb_routes from "./routes/kb-routes"
+import settings_routes from "./routes/settings-routes"
+import { get_search_settings } from "./services/settings-service"
 
 const log = create_logger("server")
 const app = express()
@@ -19,6 +21,7 @@ app.get("/api", (_req, res) => res.json({ ok: true, service: "InsureCo Support A
 app.use("/api/chat", chat_routes)
 app.use("/api/tickets", ticket_routes)
 app.use("/api/kb", kb_routes)
+app.use("/api/settings", settings_routes)
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   log.error("Unhandled error", err)
@@ -28,4 +31,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 const PORT = Number(ENV.PORT)
 app.listen(PORT, () => {
   log.info(`InsureCo Support API listening on http://localhost:${PORT}`)
+  get_search_settings().catch((err) =>
+    log.warn(`Failed to ensure default search settings: ${err instanceof Error ? err.message : String(err)}`),
+  )
 })

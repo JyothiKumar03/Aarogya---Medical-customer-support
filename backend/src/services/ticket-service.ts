@@ -1,9 +1,13 @@
 import { z } from "zod"
 import prisma from "../db/client"
 import type { TMessage } from "../types/agent-types"
-import type { TTicketStatus, TTicket } from "../types/ticket-types"
+import type { TTicketStatus, TTicket, TCreateTicketBody, TResolveTicketBody } from "../types/ticket-types"
 import { generate_object_with_fallback, build_providers } from "./ai-service"
 import { TICKET_SUMMARY_PROMPT } from "../constants/prompts"
+import { send_ticket_confirmation, send_ticket_resolution } from "./email-service"
+import { create_logger } from "./logger-service"
+
+const log = create_logger("ticket-service")
 
 function ticket_from_db(row: {
   id: string
@@ -15,6 +19,10 @@ function ticket_from_db(row: {
   resolution_summary: string | null
   added_to_kb: boolean
   kb_entry_id: string | null
+  customer_name: string | null
+  customer_email: string | null
+  customer_phone: string | null
+  additional_details: string | null
   created_at: Date
   updated_at: Date
 }): TTicket {
@@ -28,6 +36,10 @@ function ticket_from_db(row: {
     resolution_summary: row.resolution_summary ?? undefined,
     added_to_kb: row.added_to_kb,
     kb_entry_id: row.kb_entry_id ?? undefined,
+    customer_name: row.customer_name ?? undefined,
+    customer_email: row.customer_email ?? undefined,
+    customer_phone: row.customer_phone ?? undefined,
+    additional_details: row.additional_details ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }
@@ -36,10 +48,9 @@ function ticket_from_db(row: {
 const summary_schema = z.object({ summary: z.string() })
 
 export async function create_ticket(
-  session_id: string,
-  conversation: TMessage[]
+  body: TCreateTicketBody
 ): Promise<{ ticket_id: string; status: string; query_summary: string }> {
-  const user_messages = conversation
+  const user_messages = body.conversation_history
     .filter((m) => m.role === "user")
     .slice(-3)
     .map((m) => m.content)
@@ -56,12 +67,25 @@ export async function create_ticket(
 
   const ticket = await prisma.ticket.create({
     data: {
-      session_id,
+      session_id: body.session_id,
       query_summary: summary,
-      conversation_json: JSON.stringify(conversation),
+      conversation_json: JSON.stringify(body.conversation_history),
+      customer_name: body.customer_name ?? null,
+      customer_email: body.customer_email ?? null,
+      customer_phone: body.customer_phone ?? null,
+      additional_details: body.additional_details ?? null,
       status: "open",
     },
   })
+
+  if (body.customer_email && body.customer_name) {
+    send_ticket_confirmation({
+      to: body.customer_email,
+      customer_name: body.customer_name,
+      ticket_id: ticket.id,
+      query_summary: summary,
+    }).catch((err) => log.error("Confirmation email send failed:", err))
+  }
 
   return {
     ticket_id: ticket.id,
@@ -98,7 +122,7 @@ export async function get_ticket(id: string): Promise<TTicket | null> {
 
 export async function resolve_ticket(
   id: string,
-  data: { resolution_notes: string; add_to_kb: boolean }
+  data: TResolveTicketBody
 ): Promise<TTicket> {
   const ticket = await prisma.ticket.findUnique({ where: { id } })
   if (!ticket) throw new Error(`Ticket ${id} not found`)
@@ -140,6 +164,16 @@ export async function resolve_ticket(
     where: { id },
     data: updateData,
   })
+
+  if (ticket.customer_email && ticket.customer_name) {
+    send_ticket_resolution({
+      to: ticket.customer_email,
+      customer_name: ticket.customer_name,
+      ticket_id: ticket.id,
+      query_summary: ticket.query_summary,
+      resolution_summary: data.resolution_notes,
+    }).catch((err) => log.error("Resolution email send failed:", err))
+  }
 
   return ticket_from_db(updated)
 }
