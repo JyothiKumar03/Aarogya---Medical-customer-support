@@ -6,7 +6,6 @@ type TEnv = {
   GEMINI_API_KEY: string
   TAVILY_API_KEY: string
   ADMIN_SECRET: string
-  FRONTEND_URL: string
   NODE_ENV: string
 }
 
@@ -18,6 +17,5 @@ export const ENV: TEnv = {
   GEMINI_API_KEY: Bun.env.GEMINI_API_KEY ?? "not-set",
   TAVILY_API_KEY: Bun.env.TAVILY_API_KEY ?? "not-set",
   ADMIN_SECRET: Bun.env.ADMIN_SECRET ?? "not-set",
-  FRONTEND_URL: Bun.env.FRONTEND_URL ?? "http://localhost:3000",
   NODE_ENV: Bun.env.NODE_ENV ?? "development",
 } as const

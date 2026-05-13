@@ -9,12 +9,7 @@ import kb_routes from "./routes/kb-routes"
 const log = create_logger("server")
 const app = express()
 
-app.use(
-  cors({
-    origin: ENV.FRONTEND_URL,
-    credentials: true,
-  })
-)
+app.use(cors({ origin: "*" }))
 app.use(express.json())
 
 app.get("/api", (_req, res) => res.json({ ok: true, service: "InsureCo Support API" }))

@@ -14,7 +14,6 @@ import type {
 
 export const http: AxiosInstance = axios.create({
   baseURL: ENV.API_BASE_URL,
-  withCredentials: true,
   headers: { "Content-Type": "application/json" },
 })
 
