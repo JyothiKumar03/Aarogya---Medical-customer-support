@@ -1,0 +1,1 @@
+export const MAX_USER_MESSAGES_PER_CHAT = 4
