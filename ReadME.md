@@ -21,7 +21,7 @@ That's the whole loop.
 ---
 
 ## VIDEO DEMO
-[[Watch the video]](https://www.loom.com/share/70af1afec05e4ae0b25b90907b801b97)
+[[Watch the video]](https://www.loom.com/share/1d7b079cfb534c66a2146c49a240a384)
 
 
 
