@@ -7,6 +7,7 @@ import {
   DashboardSquare01Icon,
   TicketStarIcon,
   Book01Icon,
+  Settings02Icon,
   Stethoscope02Icon,
 } from "@hugeicons/core-free-icons"
 import { ViewSwitcher } from "@/components/shared/view-switcher"
@@ -23,6 +24,7 @@ const NAV: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: DashboardSquare01Icon, exact: true },
   { label: "Tickets", href: "/admin/tickets", icon: TicketStarIcon },
   { label: "Knowledge Base", href: "/admin/kb", icon: Book01Icon },
+  { label: "Settings", href: "/admin/settings", icon: Settings02Icon },
 ]
 
 export function AdminSidebar() {

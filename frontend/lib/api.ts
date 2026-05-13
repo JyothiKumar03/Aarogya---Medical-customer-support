@@ -34,14 +34,14 @@ export const ticketApi = {
     const { data } = await http.get<TTicket>(`/tickets/${id}`)
     return data
   },
-  create: async (
-    session_id: string,
+  create: async (payload: {
+    session_id: string
     conversation_history: TMessage[]
-  ): Promise<TCreateTicketResponse> => {
-    const { data } = await http.post<TCreateTicketResponse>("/tickets", {
-      session_id,
-      conversation_history,
-    })
+    customer_name: string
+    customer_email: string
+    customer_phone?: string
+  }): Promise<TCreateTicketResponse> => {
+    const { data } = await http.post<TCreateTicketResponse>("/tickets", payload)
     return data
   },
   resolve: async (
