@@ -123,6 +123,7 @@ export async function generate_object_with_fallback<T>(
         return object
       } catch (err) {
         last_error = err instanceof Error ? err : new Error(String(err))
+        console.log(JSON.stringify(last_error))
         log.warn(`${cfg.provider}/${cfg.model} attempt ${attempt}/${RETRIES_PER_PROVIDER} failed: ${last_error.message}`)
         if (attempt < RETRIES_PER_PROVIDER) {
           await new Promise((r) => setTimeout(r, 600 * attempt))
