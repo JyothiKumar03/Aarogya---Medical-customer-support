@@ -14,7 +14,10 @@ export type TScoreResult = {
 
 const score_schema = z.object({
   confidence: z.number().min(0).max(1),
-  best_entry_index: z.number().int().min(0),
+best_entry_index: z.union([
+  z.literal(-1),
+  z.number().int().min(0)
+]),
   reasoning: z.string().max(120),
 })
 
@@ -49,6 +52,8 @@ ${formatted_entries}`
       SCORE_SYSTEM_PROMPT,
       { max_tokens: 200, temperature: 0 }
     )
+
+    console.log("RESULT", result)
 
     const idx = Math.min(result.best_entry_index, entries.length - 1)
     log.info(
