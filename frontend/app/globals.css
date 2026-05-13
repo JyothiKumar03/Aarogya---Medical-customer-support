@@ -1,0 +1,196 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─────────────────────────────────────────────────────────────
+   InsureCo Doctor Blue & Clinical White theme
+   Brand: trustworthy, clean, medical
+   Primary  : #0B66E4  (doctor blue)
+   Accent   : #E6F0FF  (soft sky tint for hover/surface)
+   Success  : #0F9D58  (KB hit)
+   Warning  : #D97706  (web fallback)
+   Surface  : pure white on a faint slate canvas
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  --background: 255 255 255;
+  --foreground: 15 23 42;
+
+  --card: 255 255 255;
+  --card-foreground: 15 23 42;
+
+  --popover: 255 255 255;
+  --popover-foreground: 15 23 42;
+
+  --primary: 11 102 228;
+  --primary-foreground: 255 255 255;
+
+  --secondary: 241 245 249;
+  --secondary-foreground: 15 23 42;
+
+  --muted: 248 250 252;
+  --muted-foreground: 100 116 139;
+
+  --accent: 230 240 255;
+  --accent-foreground: 11 73 163;
+
+  --destructive: 220 38 38;
+  --destructive-foreground: 255 255 255;
+
+  --success: 15 157 88;
+  --success-foreground: 255 255 255;
+
+  --warning: 217 119 6;
+  --warning-foreground: 255 255 255;
+
+  --info: 11 102 228;
+  --info-foreground: 255 255 255;
+
+  --border: 226 232 240;
+  --input: 226 232 240;
+  --ring: 11 102 228;
+
+  --radius: 0.625rem;
+
+  --sidebar: 248 250 252;
+  --sidebar-foreground: 15 23 42;
+  --sidebar-primary: 11 102 228;
+  --sidebar-primary-foreground: 255 255 255;
+  --sidebar-accent: 230 240 255;
+  --sidebar-accent-foreground: 11 73 163;
+  --sidebar-border: 226 232 240;
+  --sidebar-ring: 11 102 228;
+
+  --chart-1: 11 102 228;
+  --chart-2: 15 157 88;
+  --chart-3: 217 119 6;
+  --chart-4: 139 92 246;
+  --chart-5: 14 165 233;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@theme inline {
+  --color-background: rgb(var(--background));
+  --color-foreground: rgb(var(--foreground));
+
+  --color-card: rgb(var(--card));
+  --color-card-foreground: rgb(var(--card-foreground));
+
+  --color-popover: rgb(var(--popover));
+  --color-popover-foreground: rgb(var(--popover-foreground));
+
+  --color-primary: rgb(var(--primary));
+  --color-primary-foreground: rgb(var(--primary-foreground));
+
+  --color-secondary: rgb(var(--secondary));
+  --color-secondary-foreground: rgb(var(--secondary-foreground));
+
+  --color-muted: rgb(var(--muted));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+
+  --color-accent: rgb(var(--accent));
+  --color-accent-foreground: rgb(var(--accent-foreground));
+
+  --color-destructive: rgb(var(--destructive));
+  --color-destructive-foreground: rgb(var(--destructive-foreground));
+
+  --color-success: rgb(var(--success));
+  --color-success-foreground: rgb(var(--success-foreground));
+
+  --color-warning: rgb(var(--warning));
+  --color-warning-foreground: rgb(var(--warning-foreground));
+
+  --color-info: rgb(var(--info));
+  --color-info-foreground: rgb(var(--info-foreground));
+
+  --color-border: rgb(var(--border));
+  --color-input: rgb(var(--input));
+  --color-ring: rgb(var(--ring));
+
+  --color-sidebar: rgb(var(--sidebar));
+  --color-sidebar-foreground: rgb(var(--sidebar-foreground));
+  --color-sidebar-primary: rgb(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: rgb(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: rgb(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: rgb(var(--sidebar-accent-foreground));
+  --color-sidebar-border: rgb(var(--sidebar-border));
+  --color-sidebar-ring: rgb(var(--sidebar-ring));
+
+  --color-chart-1: rgb(var(--chart-1));
+  --color-chart-2: rgb(var(--chart-2));
+  --color-chart-3: rgb(var(--chart-3));
+  --color-chart-4: rgb(var(--chart-4));
+  --color-chart-5: rgb(var(--chart-5));
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-sans);
+}
+
+@layer base {
+  * {
+    border-color: rgb(var(--border));
+  }
+  html,
+  body {
+    height: 100%;
+  }
+  body {
+    background: rgb(var(--background));
+    color: rgb(var(--foreground));
+    font-family: var(--font-sans);
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Subtle clinical canvas used behind the chat card */
+  .bg-canvas {
+    background:
+      radial-gradient(1200px 600px at 50% -200px, rgb(230 240 255 / 0.7), transparent 60%),
+      rgb(248 250 252);
+  }
+
+  /* Hide scrollbar but keep scrollability */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Bouncing dots typing indicator */
+  @keyframes bounce-dot {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+    40% { transform: translateY(-4px); opacity: 1; }
+  }
+  .dot-typing > span {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin: 0 2px;
+    border-radius: 9999px;
+    background: rgb(var(--primary));
+    animation: bounce-dot 1.2s infinite ease-in-out;
+  }
+  .dot-typing > span:nth-child(2) { animation-delay: 0.15s; }
+  .dot-typing > span:nth-child(3) { animation-delay: 0.3s; }
+
+  /* Cleaner prose for the assistant message body */
+  .prose-chat p { margin: 0; line-height: 1.55; }
+  .prose-chat p + p { margin-top: 0.5rem; }
+  .prose-chat ul { margin: 0.25rem 0 0.25rem 1.1rem; list-style: disc; }
+  .prose-chat ol { margin: 0.25rem 0 0.25rem 1.25rem; list-style: decimal; }
+  .prose-chat li { margin: 0.15rem 0; }
+  .prose-chat strong { font-weight: 600; }
+  .prose-chat code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: rgb(var(--muted));
+    padding: 1px 4px;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+  .prose-chat a { color: rgb(var(--primary)); text-decoration: underline; }
+}
