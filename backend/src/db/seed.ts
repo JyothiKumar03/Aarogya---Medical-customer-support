@@ -69,6 +69,18 @@ async function seed(): Promise<void> {
     log.info(`✓ ${entry.id} ${entry.title.slice(0, 60)}`)
   }
 
+  // Seed default SearchSettings if none exist
+  const existing_settings = await prisma.searchSettings.findFirst()
+  if (!existing_settings) {
+    await prisma.searchSettings.create({
+      data: {
+        allowed_domains: JSON.stringify(["prudential.com"]),
+        blocked_domains: JSON.stringify([]),
+      },
+    })
+    log.info("✓ Default search settings seeded")
+  }
+
   log.info(`Seeded ${entries.length} KB entries (${embedded} with embeddings).`)
   await prisma.$disconnect()
 }
