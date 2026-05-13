@@ -1,7 +1,13 @@
 "use client"
 
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Calendar01Icon, IdIcon } from "@hugeicons/core-free-icons"
+import {
+  Calendar01Icon,
+  IdIcon,
+  UserIcon,
+  Mail01Icon,
+  CallIcon,
+} from "@hugeicons/core-free-icons"
 import {
   Sheet,
   SheetContent,
@@ -64,6 +70,53 @@ export function TicketDrawer({ ticketId, open, onOpenChange }: Props) {
 
           {ticket && (
             <>
+              {ticket.customer_name && (
+                <section>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Customer Info
+                  </h3>
+                  <div className="space-y-1.5 rounded-lg border border-border bg-card p-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <HugeiconsIcon
+                        icon={UserIcon}
+                        size={14}
+                        className="text-muted-foreground"
+                      />
+                      <span>{ticket.customer_name}</span>
+                    </div>
+                    {ticket.customer_email && (
+                      <div className="flex items-center gap-2">
+                        <HugeiconsIcon
+                          icon={Mail01Icon}
+                          size={14}
+                          className="text-muted-foreground"
+                        />
+                        <span>{ticket.customer_email}</span>
+                      </div>
+                    )}
+                    {ticket.customer_phone ? (
+                      <div className="flex items-center gap-2">
+                        <HugeiconsIcon
+                          icon={CallIcon}
+                          size={14}
+                          className="text-muted-foreground"
+                        />
+                        <span>{ticket.customer_phone}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <HugeiconsIcon
+                          icon={CallIcon}
+                          size={14}
+                          className="text-muted-foreground"
+                        />
+                        <span className="text-muted-foreground">—</span>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+
               <section>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Conversation

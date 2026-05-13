@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
+import { CheckmarkCircle02Icon, AlertCircleIcon } from "@hugeicons/core-free-icons"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -31,16 +31,18 @@ export function ResolveForm({ ticket }: Props) {
         resolution_notes: notes.trim(),
         add_to_kb: addToKB,
       })
-      toast.success(
-        updated.kb_entry_id
-          ? "Resolved & added to KB"
-          : "Ticket resolved",
-        {
-          description: updated.kb_entry_id
-            ? `KB entry #${updated.kb_entry_id.slice(0, 6)} created.`
-            : undefined,
-        }
-      )
+      const lines: string[] = ["Ticket resolved."]
+      if (ticket.customer_email) {
+        lines.push(`Resolution email sent to ${ticket.customer_email}`)
+      } else {
+        lines.push("No customer email on file — resolution email not sent.")
+      }
+      if (updated.added_to_kb && updated.kb_entry_id) {
+        lines.push(`Added to Knowledge Base as #${updated.kb_entry_id.slice(0, 8)}`)
+      }
+      toast.success(lines[0], {
+        description: lines.slice(1).join("\n"),
+      })
     } catch (err) {
       console.error(err)
       toast.error("Couldn't resolve ticket.")
@@ -57,6 +59,18 @@ export function ResolveForm({ ticket }: Props) {
         {ticket.resolution_notes && (
           <div className="rounded-lg bg-card p-3 text-sm leading-relaxed text-foreground">
             {ticket.resolution_notes}
+          </div>
+        )}
+        {ticket.customer_email && (
+          <div className="flex items-center gap-1.5 text-xs text-success">
+            <HugeiconsIcon icon={CheckmarkCircle02Icon} size={12} />
+            <span>Resolution email sent to {ticket.customer_email}</span>
+          </div>
+        )}
+        {!ticket.customer_email && (
+          <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <HugeiconsIcon icon={AlertCircleIcon} size={12} />
+            <span>No customer email on file — resolution email not sent.</span>
           </div>
         )}
         {ticket.added_to_kb && ticket.kb_entry_id && (

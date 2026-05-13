@@ -34,9 +34,11 @@ export function TicketTable({ tickets, isLoading, onSelect }: Props) {
 
   return (
     <div className="overflow-hidden">
-      <div className="grid grid-cols-[90px_1fr_120px_120px_40px] items-center gap-3 border-b border-border bg-muted/40 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="grid grid-cols-[90px_1fr_120px_140px_100px_120px_40px] items-center gap-3 border-b border-border bg-muted/40 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <div>ID</div>
         <div>Summary</div>
+        <div>Customer</div>
+        <div>Contact</div>
         <div>Status</div>
         <div>Created</div>
         <div />
@@ -47,13 +49,26 @@ export function TicketTable({ tickets, isLoading, onSelect }: Props) {
             <button
               type="button"
               onClick={() => onSelect(t.id)}
-              className="grid w-full grid-cols-[90px_1fr_120px_120px_40px] items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-accent/40"
+              className="grid w-full grid-cols-[90px_1fr_120px_140px_100px_120px_40px] items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-accent/40"
             >
               <span className="font-mono text-xs text-muted-foreground">
                 #{t.id.slice(0, 6)}
               </span>
               <span className="line-clamp-1 text-sm text-foreground">
                 {t.query_summary}
+              </span>
+              <div className="min-w-0">
+                <span className="block truncate text-sm text-foreground">
+                  {t.customer_name ?? "—"}
+                </span>
+                {t.customer_email && (
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {t.customer_email}
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {t.customer_phone ?? "—"}
               </span>
               <TicketStatusBadge status={t.status} />
               <span className="text-xs text-muted-foreground">
