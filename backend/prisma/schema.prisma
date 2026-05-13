@@ -54,6 +54,13 @@ model SearchResult {
   messages  Message[]
 }
 
+model SearchSettings {
+  id              String   @id @default(cuid())
+  allowed_domains String   @default("[\"prudential.com\"]")
+  blocked_domains String   @default("[]")
+  updated_at      DateTime @updatedAt
+}
+
 model Ticket {
   id                String   @id @default(cuid())
   session_id        String
@@ -64,6 +71,9 @@ model Ticket {
   resolution_summary String?
   added_to_kb       Boolean  @default(false)
   kb_entry_id       String?
+  customer_name     String?
+  customer_email    String?
+  customer_phone    String?
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
 
