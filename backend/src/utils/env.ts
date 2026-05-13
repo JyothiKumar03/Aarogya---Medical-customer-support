@@ -7,6 +7,8 @@ type TEnv = {
   TAVILY_API_KEY: string
   ADMIN_SECRET: string
   NODE_ENV: string
+  RESEND_FROM_MAIL: string
+  RESEND_API_KEY: string
 }
 
 export const ENV: TEnv = {
@@ -18,4 +20,6 @@ export const ENV: TEnv = {
   TAVILY_API_KEY: Bun.env.TAVILY_API_KEY ?? "not-set",
   ADMIN_SECRET: Bun.env.ADMIN_SECRET ?? "not-set",
   NODE_ENV: Bun.env.NODE_ENV ?? "development",
+  RESEND_FROM_MAIL: Bun.env.RESEND_FROM_MAIL ?? "no-email",
+  RESEND_API_KEY: Bun.env.RESEND_API_KEY ?? "not-set",
 } as const
