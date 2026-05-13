@@ -12,6 +12,8 @@ const app = express()
 app.use(cors({ origin: "*" }))
 app.use(express.json())
 
+app.get("/", (_req, res) => res.json({ ok: true, service: "Heyya!" }))
+
 app.get("/api", (_req, res) => res.json({ ok: true, service: "InsureCo Support API" }))
 
 app.use("/api/chat", chat_routes)
