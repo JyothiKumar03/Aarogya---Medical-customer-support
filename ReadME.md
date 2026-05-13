@@ -20,22 +20,9 @@ That's the whole loop.
 
 ---
 
-## The stack
 
-| Layer | Choice |
-|---|---|
-| Backend runtime | Bun |
-| Backend framework | Express + TypeScript |
-| Frontend | Next.js 16 (App Router) + TypeScript |
-| Main agent | Claude `claude-haiku-4-5-20251001` (via Vercel AI SDK `streamText`) |
-| Relevance judge | Claude `claude-haiku-4-5-20251001` (via `generateObject` with Zod) |
-| Embeddings | OpenAI `text-embedding-3-small` (256-dim) |
-| Vector store | PostgreSQL (Neon) + pgvector extension |
-| Web search | Tavily SDK (`@tavily/core`) |
-| ORM | Prisma |
-| UI | shadcn/ui on top of the Vercel ai-chatbot template |
+![Architecture](assets/aarogya-architecture.jpeg)
 
----
 
 ## Architecture brief
 
@@ -72,6 +59,24 @@ That's the whole loop.
                                               source: "web"
                                               or "ai" if nothing
 ```
+
+
+## The stack
+
+| Layer | Choice |
+|---|---|
+| Backend runtime | Bun |
+| Backend framework | Express + TypeScript |
+| Frontend | Next.js 16 (App Router) + TypeScript |
+| Main agent | Claude `claude-haiku-4-5-20251001` (via Vercel AI SDK `streamText`) |
+| Relevance judge | Claude `claude-haiku-4-5-20251001` (via `generateObject` with Zod) |
+| Embeddings | OpenAI `text-embedding-3-small` (256-dim) |
+| Vector store | PostgreSQL (Neon) + pgvector extension |
+| Web search | Tavily SDK (`@tavily/core`) |
+| ORM | Prisma |
+| UI | shadcn/ui on top of the Vercel ai-chatbot template |
+
+---
 
 ### A few things worth flagging
 
@@ -233,21 +238,6 @@ From `frontend/`:
 | `bun run build` | Production build |
 | `bun run lint` | ESLint pass |
 
----
-
-## House rules
-
-A few conventions that the codebase leans on. Worth knowing if you plan to extend it:
-
-- **Backend functions are `snake_case`** (`search_kb`, `create_ticket`). Types use a `T` prefix (`TMessage`, `TKBEntry`). Files are `kebab-case`.
-- **All prompts live in `backend/src/constants/prompts.ts`.** Never inline a system prompt in a service file.
-- **Tag values are gated by `APPROVED_TAGS`** in `constants/tags.ts`. The summariser validates against this list before any KB write.
-- **Confidence cutoffs live in `constants/thresholds.ts`.** Want to tune KB strictness? Bump `KB_CONFIDENCE_THRESHOLD`. Don't sprinkle numbers around the codebase.
-- **No `any`.** Use `unknown` and narrow.
-- **No `process.env` in backend code.** Bun loads env vars natively, use `Bun.env`.
-- **One tool, one agent.** Don't add a second tool without a real reason; the current shape is what keeps the behaviour boring and predictable.
-
-For the longer list, see [CLAUDE.md](CLAUDE.md).
 
 ---
 
@@ -255,13 +245,13 @@ For the longer list, see [CLAUDE.md](CLAUDE.md).
 
 Worth being upfront:
 
-- It's not multi-tenant. Sessions are anonymous UUIDs in localStorage.
+- It's not multi-tenant. Sessions are anonymous.
 - It's not production auth. The admin panel is gated by a single shared secret.
 - It's not real-time. The admin dashboard polls every 30 seconds.
-- It's not optimised for scale. With ~22 KB entries pgvector scans sequentially, which is fine. At 10k+ entries you'd want an `hnsw` or `ivfflat` index on the `embedding` column.
+- It's not optimised for scale. There's no vector index created. With ~22 KB entries pgvector scans a bit slow, which is fine.
 - It does not call any real insurance backend. There's no policy lookup, no claim status, no member ID resolver. The agent is explicitly told never to invent those.
 
-This is an assessment build with a sharply scoped surface area. The goal was to nail the retrieval + escalation loop on one realistic domain rather than spread thin across ten.
+This is a build with a sharply scoped surface area. The goal was to nail the retrieval + escalation loop on one realistic domain rather than spread thin across ten.
 
 ---
 
