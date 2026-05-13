@@ -68,7 +68,6 @@ export async function search_kb(
 ): Promise<TKBSearchResult[]> {
   const query_embedding = await generate_embedding(query)
   const embedding_str = `[${query_embedding.join(",")}]`
-  console.log(JSON.stringify(embedding_str))
 
   const valid_tags = tags.filter((t) =>
     (APPROVED_TAGS as readonly string[]).includes(t)
@@ -99,7 +98,7 @@ export async function search_kb(
   // Fallback: if tag-filtered search returned nothing (the LLM may have
   // chosen tags that don't match anything), retry without the tag filter.
   let final_rows = rows
-  console.log(JSON.stringify(final_rows))
+  console.log('debug',JSON.stringify(final_rows))
   if (rows.length === 0 && valid_tags.length > 0) {
     final_rows = await prisma.$queryRaw<TSearchRow[]>`
       SELECT
