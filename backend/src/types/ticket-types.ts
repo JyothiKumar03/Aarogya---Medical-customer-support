@@ -12,6 +12,23 @@ export type TTicket = {
   resolution_summary?: string
   added_to_kb: boolean
   kb_entry_id?: string
+  customer_name?: string
+  customer_email?: string
+  customer_phone?: string
   created_at: Date
   updated_at: Date
+}
+
+export type TCreateTicketBody = {
+  session_id: string
+  conversation_history: TMessage[]
+  customer_name: string
+  customer_email: string
+  customer_phone?: string
+  additional_details?: string
+}
+
+export type TResolveTicketBody = {
+  resolution_notes: string
+  add_to_kb: boolean
 }
