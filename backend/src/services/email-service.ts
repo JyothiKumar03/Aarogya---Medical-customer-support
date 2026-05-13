@@ -179,7 +179,6 @@ export async function send_ticket_confirmation(params: {
   ticket_id: string
   query_summary: string
 }): Promise<void> {
-  log.info("emails", JSON.stringify(params) + FROM)
 
   const html = shell({
     preheader: `Ticket #${short_id(params.ticket_id)} received we'll respond within 24 hours.`,
