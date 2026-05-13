@@ -17,6 +17,7 @@ import { ChatInput } from "./chat-input"
 import { MessageBubble } from "./message-bubble"
 import { EmptyState } from "./empty-state"
 import { TicketCTA } from "./ticket-cta"
+import { TicketForm } from "./TicketForm"
 import type { TMessage } from "@/types"
 
 export function ChatWindow() {
@@ -29,12 +30,12 @@ export function ChatWindow() {
     send,
     stop,
     reset,
-    createTicket,
-    isCreatingTicket,
+    conversationHistory,
   } = useChat(sessionId)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const [createdTicket, setCreatedTicket] = useState<string | null>(null)
+  const [showTicketForm, setShowTicketForm] = useState(false)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -43,19 +44,16 @@ export function ChatWindow() {
     })
   }, [messages])
 
-  const handleCreateTicket = async () => {
-    try {
-      const res = await createTicket()
-      if (res?.ticket_id) {
-        setCreatedTicket(res.ticket_id)
-        toast.success("Ticket created", {
-          description: `#${res.ticket_id.slice(0, 8)} our team will reach out within 24 hours.`,
-        })
-      }
-    } catch (err) {
-      console.error(err)
-      toast.error("Couldn't create ticket. Please try again.")
-    }
+  const handleCreateTicket = () => {
+    setShowTicketForm(true)
+  }
+
+  const handleTicketSuccess = (ticket_id: string, email: string) => {
+    setCreatedTicket(ticket_id)
+    setShowTicketForm(false)
+    toast.success("Ticket created", {
+      description: `#${ticket_id.slice(0, 8)} confirmation sent to ${email}. Our team will reach out within 24 hours.`,
+    })
   }
 
   const lastAssistantIdx = findLastAssistantIndex(messages)
@@ -63,12 +61,14 @@ export function ChatWindow() {
     !isStreaming &&
     lastAssistantIdx !== -1 &&
     !messages[lastAssistantIdx].pending &&
-    !createdTicket
+    !createdTicket &&
+    !showTicketForm
 
   const handleNewChat = () => {
     reset()
     rotate()
     setCreatedTicket(null)
+    setShowTicketForm(false)
   }
 
   return (
@@ -87,17 +87,22 @@ export function ChatWindow() {
               {messages.map((m, i) => (
                 <div key={m.id} className="flex flex-col gap-2">
                   <MessageBubble message={m} />
-                  {i === lastAssistantIdx && showCta && (
-                    <div className="ml-11 mr-1">
-                      <TicketCTA
-                        onClick={handleCreateTicket}
-                        loading={isCreatingTicket}
+                  <div className="ml-11 mr-1">
+                    {i === lastAssistantIdx && showCta && (
+                      <TicketCTA onClick={handleCreateTicket} />
+                    )}
+                    {i === lastAssistantIdx && showTicketForm && (
+                      <TicketForm
+                        session_id={sessionId}
+                        conversation_history={conversationHistory}
+                        on_cancel={() => setShowTicketForm(false)}
+                        on_success={handleTicketSuccess}
                       />
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ))}
-              {createdTicket && (
+              {createdTicket && !showTicketForm && (
                 <div className="ml-11 flex items-center gap-2 rounded-xl border border-success/20 bg-success/5 px-3.5 py-2.5 text-xs text-success">
                   <HugeiconsIcon icon={CheckmarkCircle02Icon} size={14} />
                   <span>

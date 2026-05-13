@@ -7,12 +7,12 @@ import {
   Doctor02Icon,
   UserCircleIcon,
   AlertCircleIcon,
-  LinkSquare02Icon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { SourceBadge } from "./source-badge"
 import { ConfidencePill } from "./confidence-pill"
 import { TypingIndicator } from "./typing-indicator"
+import { WebSourcesDropdown } from "./web-sources-dropdown"
 import type { TMessage } from "@/types"
 
 type Props = {
@@ -43,7 +43,10 @@ export function MessageBubble({ message }: Props) {
     !message.errored &&
     message.source === "kb" &&
     typeof message.confidence_score === "number"
-  const webUrl = message.metadata?.web_source_url
+  const webRelevant = message.metadata?.web_relevant_urls ?? []
+  const webIrrelevant = message.metadata?.web_irrelevant_urls ?? []
+  const showWebSources =
+    !message.pending && !message.errored && webRelevant.length + webIrrelevant.length > 0
 
   return (
     <div className="flex gap-3 px-1">
@@ -85,24 +88,16 @@ export function MessageBubble({ message }: Props) {
           )}
         </div>
 
-        {(showSourceBadge || showConfidence || webUrl) && (
+        {(showSourceBadge || showConfidence) && (
           <div className="flex flex-wrap items-center gap-1.5 pl-1">
             {showSourceBadge && message.source && <SourceBadge source={message.source} />}
             {showConfidence && (
               <ConfidencePill score={message.confidence_score as number} />
             )}
-            {webUrl && (
-              <a
-                href={webUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-primary hover:underline"
-              >
-                <HugeiconsIcon icon={LinkSquare02Icon} size={11} />
-                Source
-              </a>
-            )}
           </div>
+        )}
+        {showWebSources && (
+          <WebSourcesDropdown relevant={webRelevant} irrelevant={webIrrelevant} />
         )}
       </div>
     </div>
