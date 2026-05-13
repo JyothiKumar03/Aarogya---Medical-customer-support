@@ -1,0 +1,12 @@
+export const KB_CONFIDENCE_THRESHOLD = 0.6
+
+export const EMBEDDING_SIMILARITY_THRESHOLD = 0.3
+
+export const WEB_CONFIDENCE_FLOOR = 0.5
+
+export const KB_RAG_TOP_K = 5
+
+// Hard cap on user messages per chat session. After this many, the
+// chat endpoint rejects new sends and the client surfaces "start new chat".
+// Mirrors MAX_USER_MESSAGES_PER_CHAT on the frontend keep them in sync.
+export const MAX_USER_MESSAGES_PER_CHAT = 4
