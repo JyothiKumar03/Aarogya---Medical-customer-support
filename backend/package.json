@@ -4,11 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
-    "build": "tsc",
+    "build": "bunx prisma generate && bunx prisma migrate deploy && tsc --noEmit",
     "start": "bun run src/index.ts",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
+    "db:setup": "bunx prisma migrate deploy && bun run src/db/seed.ts",
     "seed": "bun run src/db/seed.ts"
   },
   "dependencies": {
