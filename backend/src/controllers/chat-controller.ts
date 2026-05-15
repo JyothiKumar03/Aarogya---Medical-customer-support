@@ -4,7 +4,7 @@ import prisma from "../db/client"
 import { stream_agent_response } from "../services/agent-service"
 import { build_providers } from "../services/ai-service"
 import { create_logger } from "../services/logger-service"
-import { MAX_USER_MESSAGES_PER_CHAT } from "../constants/thresholds"
+import { MAX_USER_MESSAGES_PER_CHAT, MAX_CHAT_MESSAGE_CHARS } from "../constants/thresholds"
 import type { TMessage, TResponseMetadata } from "../types/agent-types"
 import type { CoreMessage } from "ai"
 
@@ -22,6 +22,21 @@ export async function handle_chat(req: Request, res: Response): Promise<void> {
 
     if (!session_id || !message) {
       res.status(400).json({ error: "session_id and message are required" })
+      return
+    }
+
+    if (typeof message !== "string") {
+      res.status(400).json({ error: "message must be a string" })
+      return
+    }
+
+    if (message.length > MAX_CHAT_MESSAGE_CHARS) {
+      res.status(413).json({
+        error: "message_too_long",
+        message: `Message exceeds the ${MAX_CHAT_MESSAGE_CHARS}-character limit.`,
+        limit: MAX_CHAT_MESSAGE_CHARS,
+        length: message.length,
+      })
       return
     }
 
