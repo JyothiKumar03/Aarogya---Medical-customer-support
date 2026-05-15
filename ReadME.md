@@ -82,6 +82,13 @@ That's the whole loop.
 | UI | shadcn/ui on top of the Vercel ai-chatbot template |
 
 ---
+## Screenshots
+
+![Chat Page](assets/chat-page-1.png)
+![Chat Page (2)](assets/chat-page-2.png)
+![Dashboard](assets/dashboard.png)
+![Web-Grounding-Settings](assets/grounding-settings.png)
+![Dashboard](assets/knowledge-base.png)
 
 ### A few things worth flagging
 
